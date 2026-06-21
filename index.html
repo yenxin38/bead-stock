@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>拼豆库存管家</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Bead Stock</p>
+        <h1>拼豆库存管家</h1>
+      </div>
+      <div class="header-actions">
+        <button id="exportDataBtn" class="button ghost">导出备份</button>
+        <label class="button ghost file-button">
+          导入备份
+          <input id="importDataInput" type="file" accept="application/json" />
+        </label>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel dashboard">
+        <div class="stat">
+          <span>颜色数量</span>
+          <strong id="totalColors">0</strong>
+        </div>
+        <div class="stat">
+          <span>总剩余豆子</span>
+          <strong id="totalBeads">0</strong>
+        </div>
+        <div class="stat warning">
+          <span>低库存</span>
+          <strong id="lowStockCount">0</strong>
+        </div>
+        <div class="stat danger">
+          <span>缺货</span>
+          <strong id="outStockCount">0</strong>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <nav class="tabs" aria-label="主要功能">
+          <button class="tab active" data-tab="inventory">库存</button>
+          <button class="tab" data-tab="project">新项目扣库存</button>
+          <button class="tab" data-tab="history">历史记录</button>
+        </nav>
+
+        <section id="inventory" class="tab-panel active">
+          <div class="toolbar">
+            <div>
+              <h2>库存列表</h2>
+              <p>先把 221 色的色号和数量导入或逐个添加。</p>
+            </div>
+            <div class="toolbar-actions">
+              <button id="applyPaletteBtn" class="button secondary">应用星芒色卡</button>
+              <label class="button secondary file-button">
+                导入 CSV
+                <input id="csvInput" type="file" accept=".csv,text/csv" />
+              </label>
+              <button id="downloadCsvTemplateBtn" class="button secondary">CSV 模板</button>
+            </div>
+          </div>
+
+          <form id="colorForm" class="form-grid">
+            <input id="colorCode" placeholder="色号，例如 A01" required />
+            <input id="colorName" placeholder="颜色名，例如 白色" />
+            <input id="colorHex" type="color" value="#ffffff" title="颜色预览" />
+            <input id="currentQty" type="number" min="0" step="1" placeholder="当前数量" required />
+            <input id="lowThreshold" type="number" min="0" step="1" placeholder="低库存线" value="50" />
+            <button class="button primary" type="submit">保存颜色</button>
+          </form>
+
+          <div class="filter-row">
+            <input id="inventorySearch" placeholder="搜索色号或颜色名" />
+            <select id="inventoryFilter">
+              <option value="all">全部颜色</option>
+              <option value="low">只看低库存</option>
+              <option value="out">只看缺货</option>
+            </select>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>色号</th>
+                  <th>颜色</th>
+                  <th>剩余</th>
+                  <th>低库存线</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="project" class="tab-panel">
+          <div class="toolbar">
+            <div>
+              <h2>新项目扣库存</h2>
+              <p>把图纸上的“色号 + 数量”录入，检查无误后一次扣库存。</p>
+            </div>
+          </div>
+
+          <div class="project-grid">
+            <form id="projectForm" class="project-form">
+              <label>
+                项目名称
+                <input id="projectName" placeholder="例如 Kuromi 20x20" required />
+              </label>
+              <label>
+                备注
+                <textarea id="projectNote" rows="3" placeholder="可写来源、尺寸、送给谁等"></textarea>
+              </label>
+
+              <div class="usage-entry">
+                <input id="usageCode" placeholder="色号" />
+                <input id="usageQty" type="number" min="1" step="1" placeholder="需要数量" />
+                <button id="addUsageBtn" class="button secondary" type="button">加入</button>
+              </div>
+
+              <label>
+                批量粘贴
+                <textarea id="bulkUsage" rows="6" placeholder="每行一个，例如&#10;A01 120&#10;B15,43&#10;C07	230"></textarea>
+              </label>
+              <button id="parseBulkBtn" class="button secondary" type="button">解析批量内容</button>
+              <button class="button primary" type="submit">确认扣库存</button>
+            </form>
+
+            <div class="usage-card">
+              <div class="usage-card-header">
+                <h3>本项目用量</h3>
+                <button id="clearUsageBtn" class="button ghost" type="button">清空</button>
+              </div>
+              <div id="shortageNotice" class="notice hidden"></div>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>色号</th>
+                      <th>需要</th>
+                      <th>库存</th>
+                      <th>扣后</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="usageBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="history" class="tab-panel">
+          <div class="toolbar">
+            <div>
+              <h2>历史记录</h2>
+              <p>每次扣库存都会留下记录，输错时可以撤销最近项目。</p>
+            </div>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

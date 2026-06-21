@@ -1,0 +1,29 @@
+{
+  "source": "C:\\Users\\kahhe\\Downloads\\拼豆库存 - Sheet1.csv",
+  "colors": 221,
+  "projects": 14,
+  "project_names": [
+    "5色圆子",
+    "5色圆子的另一半",
+    "角落生物1",
+    "角落生物2",
+    "角落生物3",
+    "古早萌物1",
+    "古早萌物2",
+    "古早萌物3",
+    "角落生物甜品1",
+    "角落生物甜品2",
+    "角落生物甜品3",
+    "角落生物甜品4",
+    "喝1",
+    "喝2"
+  ],
+  "total_current_beads": 220898,
+  "total_project_beads": 11102,
+  "outputs": {
+    "template_csv": "C:\\Users\\kahhe\\Documents\\Codex\\2026-06-21\\wo\\outputs\\bead-stock-converted\\bead-stock-template-import.csv",
+    "backup_json": "C:\\Users\\kahhe\\Documents\\Codex\\2026-06-21\\wo\\outputs\\bead-stock-converted\\bead-stock-backup-with-projects.json",
+    "project_usage_csv": "C:\\Users\\kahhe\\Documents\\Codex\\2026-06-21\\wo\\outputs\\bead-stock-converted\\bead-stock-imported-project-usage.csv",
+    "loader_html": "C:\\Users\\kahhe\\Documents\\Codex\\2026-06-21\\wo\\outputs\\bead-stock-converted\\load-converted-data.html"
+  }
+}

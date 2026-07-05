@@ -35,6 +35,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -98,6 +103,30 @@ p {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.cloud-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr);
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.cloud-panel h2 {
+  margin-bottom: 4px;
+}
+
+.cloud-panel p {
+  margin-bottom: 0;
+}
+
+.cloud-auth {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 1fr) repeat(4, auto);
+  gap: 10px;
+  align-items: center;
 }
 
 .panel,
@@ -487,7 +516,12 @@ tr:last-child td {
   }
 
   .dashboard,
-  .project-grid {
+  .project-grid,
+  .cloud-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-auth {
     grid-template-columns: 1fr;
   }
 

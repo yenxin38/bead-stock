@@ -1,5 +1,7 @@
 (function () {
   const STORAGE_KEY = "bead-stock-v1";
+  const FIREBASE_SDK_VERSION = "10.12.5";
+  const FIREBASE_CONFIG = window.BEAD_STOCK_FIREBASE_CONFIG || {};
 
   const initialState = {
     colors: [],
@@ -11,6 +13,20 @@
   let state = loadState();
   let usageItems = [];
   let historyFilter = "active";
+  let cloudSaveTimer = null;
+  let cloudApplyingSnapshot = false;
+  let localStateBeforeCloud = null;
+
+  const cloud = {
+    available: hasFirebaseConfig(),
+    ready: false,
+    auth: null,
+    db: null,
+    user: null,
+    docRef: null,
+    unsubscribe: null,
+    api: null,
+  };
 
   const $ = (id) => document.getElementById(id);
 
@@ -33,6 +49,14 @@
     downloadCsvTemplateBtn: $("downloadCsvTemplateBtn"),
     exportDataBtn: $("exportDataBtn"),
     importDataInput: $("importDataInput"),
+    cloudStatus: $("cloudStatus"),
+    cloudAuthForm: $("cloudAuthForm"),
+    cloudEmail: $("cloudEmail"),
+    cloudPassword: $("cloudPassword"),
+    cloudSignInBtn: $("cloudSignInBtn"),
+    cloudCreateBtn: $("cloudCreateBtn"),
+    cloudUploadBtn: $("cloudUploadBtn"),
+    cloudSignOutBtn: $("cloudSignOutBtn"),
     projectForm: $("projectForm"),
     projectName: $("projectName"),
     projectNote: $("projectNote"),
@@ -63,6 +87,245 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!cloudApplyingSnapshot) {
+      queueCloudSave();
+    }
+  }
+
+  function hasFirebaseConfig() {
+    return Boolean(
+      FIREBASE_CONFIG &&
+      FIREBASE_CONFIG.apiKey &&
+      FIREBASE_CONFIG.projectId &&
+      FIREBASE_CONFIG.appId
+    );
+  }
+
+  function normalizeState(value) {
+    return {
+      colors: Array.isArray(value && value.colors) ? value.colors : [],
+      projects: Array.isArray(value && value.projects) ? value.projects : [],
+    };
+  }
+
+  function setCloudStatus(message) {
+    if (els.cloudStatus) {
+      els.cloudStatus.textContent = message;
+    }
+  }
+
+  function setCloudBusy(isBusy) {
+    [
+      els.cloudSignInBtn,
+      els.cloudCreateBtn,
+      els.cloudUploadBtn,
+      els.cloudSignOutBtn,
+    ].forEach((button) => {
+      if (button) button.disabled = isBusy;
+    });
+  }
+
+  function updateCloudUi() {
+    if (!els.cloudAuthForm) return;
+
+    if (!cloud.available) {
+      setCloudStatus("本机储存模式。请先在 firebase-config.js 填入 Firebase 配置。");
+      els.cloudEmail.disabled = true;
+      els.cloudPassword.disabled = true;
+      els.cloudSignInBtn.disabled = true;
+      els.cloudCreateBtn.disabled = true;
+      els.cloudUploadBtn.classList.add("hidden");
+      els.cloudSignOutBtn.classList.add("hidden");
+      return;
+    }
+
+    const signedIn = Boolean(cloud.user);
+    els.cloudEmail.classList.toggle("hidden", signedIn);
+    els.cloudPassword.classList.toggle("hidden", signedIn);
+    els.cloudSignInBtn.classList.toggle("hidden", signedIn);
+    els.cloudCreateBtn.classList.toggle("hidden", signedIn);
+    els.cloudUploadBtn.classList.toggle("hidden", !signedIn);
+    els.cloudSignOutBtn.classList.toggle("hidden", !signedIn);
+
+    if (signedIn) {
+      setCloudStatus(`已登录 ${cloud.user.email || cloud.user.uid}，库存会自动同步到云端。`);
+    } else if (cloud.ready) {
+      setCloudStatus("Firebase 已连接。登录后可在不同设备同步库存。");
+    } else {
+      setCloudStatus("正在连接 Firebase...");
+    }
+  }
+
+  async function initCloudSync() {
+    updateCloudUi();
+    if (!cloud.available) return;
+
+    try {
+      const appModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`);
+      const authModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`);
+      const firestoreModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-firestore.js`);
+
+      const firebaseApp = appModule.initializeApp(FIREBASE_CONFIG);
+      cloud.auth = authModule.getAuth(firebaseApp);
+      cloud.db = firestoreModule.getFirestore(firebaseApp);
+      cloud.api = {
+        createUserWithEmailAndPassword: authModule.createUserWithEmailAndPassword,
+        doc: firestoreModule.doc,
+        getDoc: firestoreModule.getDoc,
+        onAuthStateChanged: authModule.onAuthStateChanged,
+        onSnapshot: firestoreModule.onSnapshot,
+        serverTimestamp: firestoreModule.serverTimestamp,
+        setDoc: firestoreModule.setDoc,
+        signInWithEmailAndPassword: authModule.signInWithEmailAndPassword,
+        signOut: authModule.signOut,
+      };
+      cloud.ready = true;
+      updateCloudUi();
+
+      cloud.api.onAuthStateChanged(cloud.auth, (user) => {
+        cloud.user = user;
+        if (cloud.unsubscribe) {
+          cloud.unsubscribe();
+          cloud.unsubscribe = null;
+        }
+
+        if (!user) {
+          cloud.docRef = null;
+          updateCloudUi();
+          return;
+        }
+
+        cloud.docRef = cloud.api.doc(cloud.db, "users", user.uid, "beadStock", "state");
+        localStateBeforeCloud = structuredClone(state);
+        listenToCloudState();
+        updateCloudUi();
+      });
+    } catch (error) {
+      console.error(error);
+      setCloudStatus("Firebase 连接失败。请检查网络、配置和 Firebase 服务是否已开启。");
+    }
+  }
+
+  async function listenToCloudState() {
+    if (!cloud.docRef) return;
+
+    cloud.unsubscribe = cloud.api.onSnapshot(
+      cloud.docRef,
+      async (snapshot) => {
+        if (!snapshot.exists()) {
+          await uploadLocalState(true);
+          return;
+        }
+
+        const remoteState = normalizeState(snapshot.data());
+        applyStarPalette(remoteState, false);
+        cloudApplyingSnapshot = true;
+        localStorage.setItem(`${STORAGE_KEY}-before-cloud`, JSON.stringify(localStateBeforeCloud || state));
+        state = remoteState;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        cloudApplyingSnapshot = false;
+        renderAll();
+        updateCloudUi();
+      },
+      (error) => {
+        console.error(error);
+        setCloudStatus("云端同步读取失败。请检查 Firestore 安全规则。");
+      }
+    );
+  }
+
+  function queueCloudSave() {
+    if (!cloud.ready || !cloud.user || !cloud.docRef) return;
+    window.clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = window.setTimeout(() => uploadLocalState(false), 600);
+  }
+
+  async function uploadLocalState(showMessage, stateToUpload = state) {
+    if (!cloud.ready || !cloud.user || !cloud.docRef) {
+      if (showMessage) showToast("请先登录云同步。");
+      return;
+    }
+
+    try {
+      await cloud.api.setDoc(
+        cloud.docRef,
+        {
+          ...normalizeState(stateToUpload),
+          schemaVersion: 1,
+          updatedAt: cloud.api.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (showMessage) showToast("本机数据已上传到云端。");
+    } catch (error) {
+      console.error(error);
+      if (showMessage) {
+        showToast("上传失败，请检查 Firebase 权限。");
+      } else {
+        setCloudStatus("保存到云端失败，请检查网络或 Firestore 权限。");
+      }
+    }
+  }
+
+  async function signInToCloud(event) {
+    event.preventDefault();
+    if (!cloud.ready) {
+      showToast("Firebase 还没有连接完成。");
+      return;
+    }
+
+    const email = els.cloudEmail.value.trim();
+    const password = els.cloudPassword.value;
+    if (!email || !password) {
+      showToast("请输入 Email 和密码。");
+      return;
+    }
+
+    try {
+      setCloudBusy(true);
+      await cloud.api.signInWithEmailAndPassword(cloud.auth, email, password);
+      els.cloudPassword.value = "";
+      showToast("已登录云同步。");
+    } catch (error) {
+      console.error(error);
+      showToast("登录失败，请检查账号密码。");
+    } finally {
+      setCloudBusy(false);
+      updateCloudUi();
+    }
+  }
+
+  async function createCloudAccount() {
+    if (!cloud.ready) {
+      showToast("Firebase 还没有连接完成。");
+      return;
+    }
+
+    const email = els.cloudEmail.value.trim();
+    const password = els.cloudPassword.value;
+    if (!email || password.length < 6) {
+      showToast("请输入 Email，密码至少 6 位。");
+      return;
+    }
+
+    try {
+      setCloudBusy(true);
+      await cloud.api.createUserWithEmailAndPassword(cloud.auth, email, password);
+      els.cloudPassword.value = "";
+      showToast("账号已创建，并会自动同步库存。");
+    } catch (error) {
+      console.error(error);
+      showToast("创建账号失败，请检查 Firebase Auth 设置。");
+    } finally {
+      setCloudBusy(false);
+      updateCloudUi();
+    }
+  }
+
+  async function signOutFromCloud() {
+    if (!cloud.ready) return;
+    await cloud.api.signOut(cloud.auth);
+    showToast("已退出云同步。本机资料仍保留。");
   }
 
   function normalizeCode(code) {
@@ -729,6 +992,14 @@
   });
   els.exportDataBtn.addEventListener("click", exportData);
   els.importDataInput.addEventListener("change", (event) => importData(event.target.files[0]));
+  els.cloudAuthForm.addEventListener("submit", signInToCloud);
+  els.cloudCreateBtn.addEventListener("click", createCloudAccount);
+  els.cloudUploadBtn.addEventListener("click", () => {
+    if (confirm("上传本机数据会覆盖当前云端库存。确定继续？")) {
+      uploadLocalState(true, localStateBeforeCloud || state);
+    }
+  });
+  els.cloudSignOutBtn.addEventListener("click", signOutFromCloud);
 
   els.addUsageBtn.addEventListener("click", () => {
     addUsage(els.usageCode.value, els.usageQty.value);
@@ -767,4 +1038,5 @@
   });
 
   renderAll();
+  initCloudSync();
 })();

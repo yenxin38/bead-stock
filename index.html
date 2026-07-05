@@ -41,6 +41,21 @@
         </div>
       </section>
 
+      <section class="panel cloud-panel">
+        <div>
+          <h2>云同步</h2>
+          <p id="cloudStatus">本机储存模式。配置 Firebase 后可在不同设备同步库存。</p>
+        </div>
+        <form id="cloudAuthForm" class="cloud-auth">
+          <input id="cloudEmail" type="email" autocomplete="email" placeholder="Email" />
+          <input id="cloudPassword" type="password" autocomplete="current-password" placeholder="Password" />
+          <button id="cloudSignInBtn" class="button primary" type="submit">登录同步</button>
+          <button id="cloudCreateBtn" class="button secondary" type="button">创建账号</button>
+          <button id="cloudUploadBtn" class="button secondary hidden" type="button">上传本机数据</button>
+          <button id="cloudSignOutBtn" class="button ghost hidden" type="button">退出</button>
+        </form>
+      </section>
+
       <section class="workspace">
         <nav class="tabs" aria-label="主要功能">
           <button class="tab active" data-tab="inventory">库存</button>
@@ -169,6 +184,7 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./firebase-config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
